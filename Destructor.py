@@ -7,10 +7,12 @@ from PyQt5.QtWidgets import (
     QLabel,
     QWidget,
     QMessageBox,
+    QLineEdit,
     QSizePolicy,
     QSpacerItem,
 )
-from PyQt5.QtCore import Qt  # Importer Qt ici
+from PyQt5.QtCore import Qt
+from scapy.all import IP, TCP, sr1  # Importer Scapy ici
 
 # Instructions d'installation :
 # Pour installer Python 3 et PyQt5 :
@@ -18,10 +20,12 @@ from PyQt5.QtCore import Qt  # Importer Qt ici
 # Sur macOS :
 # 1. Télécharger Python 3 depuis python.org
 # 2. Installer PyQt5 via la commande : pip3 install PyQt5
+# 3. Installer Scapy via la commande : pip3 install scapy
 # 
 # Sur Windows :
 # 1. Télécharger Python 3 depuis python.org
 # 2. Installer PyQt5 via la commande : pip install PyQt5
+# 3. Installer Scapy via la commande : pip install scapy
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -51,9 +55,22 @@ class MainWindow(QMainWindow):
         # Ajouter un espace flexible avant les boutons
         layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
+        # Champ pour l'adresse IP
+        self.ip_input = QLineEdit()
+        self.ip_input.setPlaceholderText("Adresse IP cible (ex: 192.168.1.1)")
+        layout.addWidget(self.ip_input)
+
+        # Champ pour les ports
+        self.ports_input = QLineEdit()
+        self.ports_input.setPlaceholderText("Ports à scanner (ex: 21,22,23,80,443)")
+        layout.addWidget(self.ports_input)
+
+        # Ajouter un espace flexible avant les boutons
+        layout.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
         # Bouton Brute Force
         btn_brute_force = QPushButton("Brute Force")
-        btn_brute_force.setStyleSheet("background-color: gray; color: white;")  # Style des boutons
+        btn_brute_force.setStyleSheet("background-color: gray; color: white;")
         btn_brute_force.clicked.connect(self.run_brute_force)
         layout.addWidget(btn_brute_force)
 
@@ -62,7 +79,7 @@ class MainWindow(QMainWindow):
 
         # Bouton ARP Poisoning
         btn_arp_poisoning = QPushButton("ARP Poisoning")
-        btn_arp_poisoning.setStyleSheet("background-color: gray; color: white;")  # Style des boutons
+        btn_arp_poisoning.setStyleSheet("background-color: gray; color: white;")
         btn_arp_poisoning.clicked.connect(self.run_arp_poisoning)
         layout.addWidget(btn_arp_poisoning)
 
@@ -71,8 +88,8 @@ class MainWindow(QMainWindow):
 
         # Bouton Scan de Port
         btn_scan_ports = QPushButton("Scan de Port")
-        btn_scan_ports.setStyleSheet("background-color: gray; color: white;")  # Style des boutons
-        btn_scan_ports.clicked.connect(self.run_port_scan)
+        btn_scan_ports.setStyleSheet("background-color: gray; color: white;")
+        btn_scan_ports.clicked.connect(self.scan_ports)
         layout.addWidget(btn_scan_ports)
 
         # Ajouter un espace flexible entre les boutons
@@ -80,7 +97,7 @@ class MainWindow(QMainWindow):
 
         # Bouton DDoS
         btn_ddos = QPushButton("DDoS")
-        btn_ddos.setStyleSheet("background-color: gray; color: white;")  # Style des boutons
+        btn_ddos.setStyleSheet("background-color: gray; color: white;")
         btn_ddos.clicked.connect(self.run_ddos)
         layout.addWidget(btn_ddos)
 
@@ -89,24 +106,15 @@ class MainWindow(QMainWindow):
 
         # Bouton Exécuter Tout
         btn_execute_all = QPushButton("Exécuter Tout")
-        btn_execute_all.setStyleSheet("background-color: blue; color: white;")  # Style du bouton Exécuter Tout
+        btn_execute_all.setStyleSheet("background-color: blue; color: white;")
         btn_execute_all.clicked.connect(self.execute_all)
         layout.addWidget(btn_execute_all)
-
-        # Ajouter un espace flexible entre les boutons
-        layout.addSpacerItem(QSpacerItem(20, 10, QSizePolicy.Minimum, QSizePolicy.Fixed))
-
-        # Bouton Quitter
-        btn_quit = QPushButton("Quitter")
-        btn_quit.setStyleSheet("background-color: red; color: white;")  # Style du bouton Quitter
-        btn_quit.clicked.connect(self.close_application)
-        layout.addWidget(btn_quit)
 
         # Ajouter un espace flexible avant la mention
         layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
         # Mention en bas
-        footer_label = QLabel("MADE BY - TP ES LU")
+        footer_label = QLabel("Made by TP, ES, LU")
         footer_label.setStyleSheet("color: white; text-align: center;")
         footer_label.setAlignment(Qt.AlignCenter)  # Centrer le texte
         layout.addWidget(footer_label)
@@ -114,20 +122,41 @@ class MainWindow(QMainWindow):
         # Définir le layout au widget central
         central_widget.setLayout(layout)
 
+    def scan_ports(self):
+        target = self.ip_input.text()
+        ports_input = self.ports_input.text()
+        if not target or not ports_input:
+            QMessageBox.warning(self, "Erreur", "Veuillez entrer une adresse IP et des ports.")
+            return
+
+        ports = [int(port.strip()) for port in ports_input.split(",")]
+
+        results = []
+        for port in ports:
+            pkt = IP(dst=target) / TCP(dport=port, flags="S")
+            resp = sr1(pkt, timeout=1, verbose=0)
+            if resp is not None:
+                if resp.haslayer(TCP) and (resp[TCP].flags == "SA"):
+                    results.append(f"Le port {port} est ouvert")
+                elif resp.haslayer(TCP) and (resp[TCP].flags == "RA"):
+                    results.append(f"Le port {port} est fermé")
+                else:
+                    results.append(f"Le port {port} réponse : inconnu")
+
+        # Afficher les résultats
+        QMessageBox.information(self, "Scan de Port", "\n".join(results) if results else "Aucun résultat.")
+
     def execute_all(self):
         self.run_brute_force()
         self.run_arp_poisoning()
-        self.run_port_scan()
         self.run_ddos()
+        self.scan_ports()  # Ne pas oublier d'exécuter le scan de port
 
     def run_brute_force(self):
         QMessageBox.information(self, "Action", "Brute Force lancé !")
 
     def run_arp_poisoning(self):
         QMessageBox.information(self, "Action", "ARP Poisoning lancé !")
-
-    def run_port_scan(self):
-        QMessageBox.information(self, "Action", "Scan de Port lancé !")
 
     def run_ddos(self):
         QMessageBox.information(self, "Action", "DDoS simulé !")
