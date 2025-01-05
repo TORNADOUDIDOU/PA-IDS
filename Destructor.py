@@ -1,4 +1,6 @@
 import sys
+import PyQt5
+
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -13,7 +15,7 @@ from PyQt5.QtWidgets import (
     QFileDialog,
 )
 from PyQt5.QtCore import Qt
-from scapy.all import IP, TCP, sr1, send, Ether, ARP
+from scapy.all import IP, TCP, sr1, send, Ether, ARP, getmacbyip, sendp
 
 
 class PortScanWindow(QWidget):
@@ -53,6 +55,7 @@ class PortScanWindow(QWidget):
         for port_name, port_number in self.port_buttons.items():
             button = QPushButton(port_name)
             button.setCheckable(True)
+            button.setStyleSheet("background-color: lightgray;")
             button.clicked.connect(lambda checked, port=port_number, btn=button: self.toggle_port_selection(port, btn))
             layout.addWidget(button)
 
@@ -139,6 +142,7 @@ class BruteForceWindow(QWidget):
         for port_name, port_number in self.ports_buttons.items():
             button = QPushButton(port_name)
             button.setCheckable(True)
+            button.setStyleSheet("background-color: lightgray;")
             button.clicked.connect(lambda checked, port=port_number, btn=button: self.toggle_port_selection(port, btn))
             layout.addWidget(button)
 
@@ -372,7 +376,14 @@ class MainWindow(QMainWindow):
         self.arp_spoofing_window.show()
 
     def execute_all(self):
-        QMessageBox.information(self, "Exécuter Tout", "Fonctionnalité à implémenter.")
+        self.port_scan_window = PortScanWindow()
+        self.port_scan_window.show()
+        self.brute_force_window = BruteForceWindow()
+        self.brute_force_window.show()
+        self.ddos_window = DDoSWindow()
+        self.ddos_window.show()
+        self.arp_spoofing_window = ARPSpoofingWindow()
+        self.arp_spoofing_window.show()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
