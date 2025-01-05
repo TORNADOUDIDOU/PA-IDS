@@ -299,8 +299,28 @@ class ARPSpoofingWindow(QWidget):
             sendp(arp_poisoning_gateway, verbose=0)
 
             QMessageBox.information(self, "ARP Spoofing", "ARP Spoofing exécuté.")
+            
+        # Restauration des entrées ARP
+            self.reset_arp_cache(target_ip, target_mac, gateway_ip, gateway_mac)
+            QMessageBox.information(self, "ARP Spoofing", "Tables ARP restaurées.")
         except Exception as e:
             QMessageBox.warning(self, "Erreur", f"Erreur lors de l'exécution de l'ARP Spoofing : {str(e)}")
+
+    def reset_arp_cache(self, victim_ip, victim_mac, gateway_ip, gateway_mac):
+        """
+        Restaure les tables ARP des cibles avec les bonnes associations IP-MAC.
+        """
+        try:
+            # Restauration côté victime
+            restore_victim = ARP(op=2, psrc=gateway_ip, pdst=victim_ip, hwsrc=gateway_mac, hwdst=victim_mac)
+            # Restauration côté passerelle
+            restore_gateway = ARP(op=2, psrc=victim_ip, pdst=gateway_ip, hwsrc=victim_mac, hwdst=gateway_mac)
+
+            # Envoi des paquets correctifs
+            send(restore_victim, count=3, verbose=0)
+            send(restore_gateway, count=3, verbose=0)
+        except Exception as e:
+            QMessageBox.warning(self, "Erreur", f"Erreur lors de la restauration des tables ARP : {str(e)}")
 
 
 class MainWindow(QMainWindow):
